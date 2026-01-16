@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Transform</title>
+    <!-- Add FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            /* Dark Theme (Default) */
+            --bg-color: #1e1e1e;
+            --header-bg: #252526;
+            --text-color: #d4d4d4;
+            --border-color: #3e3e42;
+            --pane-bg: #1e1e1e;
+            --toolbar-bg: #2d2d2d;
+            --accent-color: #007fd4;
+            --title-color: #61dafb;
+            --label-color: #9cdcfe;
+            --button-hover: #3e3e42;
+            --error-color: #f48771;
+            --gutter-hover: #007fd4;
+        }
+
+        .light-theme {
+            /* Light Theme Overrides */
+            --bg-color: #ffffff;
+            --header-bg: #f3f3f3;
+            --text-color: #333333;
+            --border-color: #cccccc;
+            --pane-bg: #ffffff;
+            --toolbar-bg: #e5e5e5;
+            --accent-color: #0078d4;
+            --title-color: #0078d4;
+            --label-color: #555555;
+            --button-hover: #d0d0d0;
+            --error-color: #e51400;
+            --gutter-hover: #0078d4;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        /* --- Header --- */
+        header {
+            background-color: var(--header-bg);
+            padding: 0 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 50px;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            margin: 0;
+            color: var(--title-color);
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        select {
+            background-color: var(--toolbar-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 5px 10px;
+            border-radius: 4px;
+            outline: none;
+            font-size: 0.9rem;
+        }
+
+        button.icon-btn {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 5px;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+
+        button.icon-btn:hover {
+            background-color: var(--button-hover);
+        }
+
+        /* --- Layout --- */
+        .main-container {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 50px);
+            overflow: hidden;
+        }
+
+        /* Panes */
+        .pane {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            /* Important for flex collapse */
+            min-height: 0;
+            background-color: var(--pane-bg);
+            transition: flex-grow 0.3s ease;
+            /* Smooth collapse animation */
+        }
+
+        .pane.collapsed {
+            flex: 0 0 36px !important;
+            /* Height/Width of toolbar only */
+            min-height: 36px !important;
+            overflow: hidden;
+        }
+
+        /* Pane Toolbar */
+        .pane-toolbar {
+            background-color: var(--toolbar-bg);
+            padding: 0 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            height: 36px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .pane-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: var(--label-color);
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            /* Click title to collapse too */
+        }
+
+        .pane-actions button {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            opacity: 0.7;
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 4px 8px;
+            border-radius: 3px;
+            transition: opacity 0.2s, background 0.2s;
+        }
+
+        .pane-actions button:hover {
+            opacity: 1;
+            background-color: var(--button-hover);
+        }
+
+        /* Pane Content */
+        .pane-content {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        textarea,
+        pre {
+            width: 100%;
+            height: 100%;
+            border: none;
+            resize: none;
+            background-color: var(--pane-bg);
+            color: var(--text-color);
+            padding: 10px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            outline: none;
+        }
+
+        pre {
+            overflow: auto;
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Input Wrapper for Highlights */
+        .input-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            /* Textarea handles scroll */
+        }
+
+        .backdrop,
+        textarea {
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            border: none;
+            resize: none;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            letter-spacing: normal;
+            tab-size: 4;
+            margin: 0;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow: auto;
+        }
+
+        .backdrop {
+            position: absolute;
+            z-index: 1;
+            color: transparent;
+            pointer-events: none;
+            background-color: transparent;
+        }
+
+        .backdrop mark {
+            border-radius: 2px;
+            color: transparent;
+            background-color: rgba(0, 90, 140, 0.4);
+            /* Darker shade for non-current */
+        }
+
+        .backdrop mark.current-match {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background-color: #00B4D8;
+            /* Requested Cyan */
+        }
+
+        /* Result Pane Specifics (Text is visible) */
+        #result-output mark {
+            border-radius: 2px;
+            color: inherit;
+            background-color: rgba(0, 90, 140, 0.4);
+        }
+
+        #result-output mark.current-match {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background-color: #00B4D8;
+            color: #000;
+            /* Ensure contrast on bright cyan */
+        }
+
+        textarea {
+            position: absolute;
+            z-index: 2;
+            background-color: transparent;
+            color: var(--text-color);
+        }
+
+        /* Theme overrides for highlights */
+        .light-theme .backdrop mark {
+            background-color: rgba(0, 180, 216, 0.2);
+        }
+
+        .light-theme .backdrop mark.current-match {
+            background-color: #00B4D8;
+        }
+
+        /* Structure */
+        #left-col {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+        }
+
+        #right-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #data-pane {
+            height: 50%;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        #template-pane {
+            flex: 1;
+        }
+
+        /* Gutters/Resizers */
+        .gutter {
+            background-color: transparent;
+            /* Invisible interactive area */
+            z-index: 10;
+            position: relative;
+        }
+
+        .gutter::after {
+            content: '';
+            position: absolute;
+            background-color: var(--border-color);
+            /* Visible line */
+            transition: background-color 0.2s;
+        }
+
+        .gutter:hover::after,
+        .gutter.active::after {
+            background-color: var(--gutter-hover);
+        }
+
+        .gutter-h {
+            cursor: col-resize;
+            width: 10px;
+            margin-left: -5px;
+            /* Center over border */
+            height: 100%;
+        }
+
+        .gutter-h::after {
+            left: 50%;
+            width: 1px;
+            height: 100%;
+        }
+
+        .gutter-v {
+            cursor: row-resize;
+            width: 100%;
+            height: 10px;
+            margin-top: -5px;
+            /* Center over border */
+        }
+
+        .gutter-v::after {
+            top: 50%;
+            height: 1px;
+            width: 100%;
+        }
+
+        /* Error/Status */
+        .status-msg {
+            font-size: 0.8rem;
+            margin-right: 15px;
+            opacity: 0;
+            transition: opacity 0.5s;
+            color: var(--text-color);
+        }
+
+        .status-msg.visible {
+            opacity: 0.8;
+        }
+
+        .error-text {
+            color: var(--error-color);
+            border-left: 3px solid var(--error-color);
+            padding-left: 10px;
+        }
+
+        /* Utility */
+        .hidden-file-input {
+            display: none;
+        }
+
+        /* Search Widget Advanced */
+        .search-widget {
+            position: absolute;
+            top: 5px;
+            right: 25px;
+            background: var(--toolbar-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 4px;
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 20;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            min-width: 250px;
+        }
+
+        .search-widget.visible {
+            display: flex;
+        }
+
+        .search-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .search-input-group {
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+
+        .search-widget input {
+            background: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 4px 6px;
+            font-size: 0.85rem;
+            width: 100%;
+            outline: none;
+            border-radius: 3px;
+        }
+
+        .search-widget input:focus {
+            border-color: var(--accent-color);
+        }
+
+        .search-count {
+            font-size: 0.75rem;
+            color: var(--text-color);
+            opacity: 0.7;
+            margin: 0 4px;
+            min-width: 40px;
+            text-align: right;
+            user-select: none;
+        }
+
+        .search-widget button {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 4px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+        }
+
+        .search-widget button:hover {
+            background-color: var(--button-hover);
+        }
+
+        .replace-row {
+            display: none;
+        }
+
+        .replace-row.visible {
+            display: flex;
+        }
+    </style>
+    <script src="st.js"></script>
+</head>
+
+<body>
+    <header>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <h1>JSON Transform</h1>
+        </div>
+        <div class="header-controls">
+            <span id="save-status" class="status-msg"><i class="fas fa-check"></i> Saved</span>
+
+            <select id="example-select">
+                <option value="intro">Example: Intro</option>
+                <option value="loops">Example: Loops (#each)</option>
+                <option value="conditionals">Example: Conditionals (#if)</option>
+                <option value="nested">Example: Nested Objects</option>
+            </select>
+
+            <button class="icon-btn" onclick="shareState()" title="Share Link"><i class="fas fa-share-alt"></i></button>
+            <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme" id="theme-btn"><i
+                    class="fas fa-sun"></i></button>
+        </div>
+    </header>
+
+    <div class="main-container" id="main-container">
+
+        <!-- Left Column -->
+        <div id="left-col">
+
+            <!-- Data Pane -->
+            <div id="data-pane" class="pane">
+                <div class="pane-toolbar">
+                    <span class="pane-title" onclick="toggleCollapse('data-pane')">
+                        <i class="fas fa-chevron-down" id="data-pane-icon"></i> Data (JSON)
+                    </span>
+                    <div class="pane-actions">
+                        <input type="file" id="data-upload" class="hidden-file-input" accept=".json"
+                            onchange="handleFileUpload(this, 'data-input')">
+                        <button onclick="document.getElementById('data-upload').click()" title="Import JSON"><i
+                                class="fas fa-upload"></i> Import</button>
+                        <button onclick="prettify('data')" title="Format JSON"><i class="fas fa-code"></i>
+                            Format</button>
+                        <button onclick="copyToClipboard('data-input')" title="Copy content"><i class="fas fa-copy"></i>
+                            Copy</button>
+                    </div>
+                </div>
+                <div class="pane-content" id="data-pane-content" tabindex="-1">
+                    <div class="input-wrapper">
+                        <div class="backdrop" id="data-backdrop"></div>
+                        <textarea id="data-input" spellcheck="false" placeholder="Enter JSON data here..."></textarea>
+                    </div>
+                    <!-- Search Widget: Data -->
+                    <div class="search-widget" id="search-data">
+                        <div class="search-row">
+                            <button onclick="toggleReplace('data')" title="Toggle Replace"><i
+                                    class="fas fa-chevron-right" id="data-replace-toggle"></i></button>
+                            <input type="text" placeholder="Find" onkeydown="handleSearchInput(event, 'data')"
+                                oninput="performSearch('data')">
+                            <span class="search-count" id="data-count">No results</span>
+                            <button onclick="navigateMatch('data', -1)" title="Previous Match"><i
+                                    class="fas fa-arrow-up"></i></button>
+                            <button onclick="navigateMatch('data', 1)" title="Next Match"><i
+                                    class="fas fa-arrow-down"></i></button>
+                            <button onclick="closeSearch('data')" title="Close"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="search-row replace-row" id="data-replace-row">
+                            <button disabled style="opacity:0"></button> <!-- Spacer -->
+                            <input type="text" placeholder="Replace" id="data-replace-input">
+                            <button onclick="replaceCurrent('data')" title="Replace"><i
+                                    class="fas fa-check"></i></button>
+                            <button onclick="replaceAll('data')" title="Replace All"><i
+                                    class="fas fa-check-double"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vertical Splitter -->
+            <div class="gutter gutter-v" id="gutter-v"></div>
+
+            <!-- Template Pane -->
+            <div id="template-pane" class="pane">
+                <div class="pane-toolbar">
+                    <span class="pane-title" onclick="toggleCollapse('template-pane')">
+                        <i class="fas fa-chevron-down" id="template-pane-icon"></i> Template (JSON)
+                    </span>
+                    <div class="pane-actions">
+                        <input type="file" id="template-upload" class="hidden-file-input" accept=".json"
+                            onchange="handleFileUpload(this, 'template-input')">
+                        <button onclick="document.getElementById('template-upload').click()" title="Import JSON"><i
+                                class="fas fa-upload"></i> Import</button>
+                        <button onclick="prettify('template')" title="Format JSON"><i class="fas fa-code"></i>
+                            Format</button>
+                        <button onclick="copyToClipboard('template-input')" title="Copy content"><i
+                                class="fas fa-copy"></i> Copy</button>
+                        <button onclick="saveTemplate()" title="Download Template"><i class="fas fa-download"></i>
+                            Save</button>
+                    </div>
+                </div>
+                <div class="pane-content" id="template-pane-content" tabindex="-1">
+                    <div class="input-wrapper">
+                        <div class="backdrop" id="template-backdrop"></div>
+                        <textarea id="template-input" spellcheck="false"
+                            placeholder="Enter ST.js template here..."></textarea>
+                    </div>
+                    <!-- Search Widget: Template -->
+                    <div class="search-widget" id="search-template">
+                        <div class="search-row">
+                            <button onclick="toggleReplace('template')" title="Toggle Replace"><i
+                                    class="fas fa-chevron-right" id="template-replace-toggle"></i></button>
+                            <input type="text" placeholder="Find" onkeydown="handleSearchInput(event, 'template')"
+                                oninput="performSearch('template')">
+                            <span class="search-count" id="template-count">No results</span>
+                            <button onclick="navigateMatch('template', -1)" title="Previous Match"><i
+                                    class="fas fa-arrow-up"></i></button>
+                            <button onclick="navigateMatch('template', 1)" title="Next Match"><i
+                                    class="fas fa-arrow-down"></i></button>
+                            <button onclick="closeSearch('template')" title="Close"><i
+                                    class="fas fa-times"></i></button>
+                        </div>
+                        <div class="search-row replace-row" id="template-replace-row">
+                            <button disabled style="opacity:0"></button> <!-- Spacer -->
+                            <input type="text" placeholder="Replace" id="template-replace-input">
+                            <button onclick="replaceCurrent('template')" title="Replace"><i
+                                    class="fas fa-check"></i></button>
+                            <button onclick="replaceAll('template')" title="Replace All"><i
+                                    class="fas fa-check-double"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Horizontal Splitter -->
+        <div class="gutter gutter-h" id="gutter-h"></div>
+
+        <!-- Right Column: Result -->
+        <div id="right-col" class="pane">
+            <div class="pane-toolbar">
+                <span class="pane-title">Result</span>
+                <div class="pane-actions">
+                    <button onclick="copyToClipboard('result-output')" title="Copy content"><i class="fas fa-copy"></i>
+                        Copy</button>
+                </div>
+            </div>
+            <div class="pane-content" id="result-pane-content" tabindex="-1">
+                <pre id="result-output"></pre>
+                <!-- Search Widget: Result (No Replace) -->
+                <div class="search-widget" id="search-result">
+                    <div class="search-row">
+                        <input type="text" placeholder="Find" onkeydown="handleSearchInput(event, 'result')"
+                            oninput="performSearch('result')">
+                        <span class="search-count" id="result-count">No results</span>
+                        <button onclick="navigateMatch('result', -1)" title="Previous Match"><i
+                                class="fas fa-arrow-up"></i></button>
+                        <button onclick="navigateMatch('result', 1)" title="Next Match"><i
+                                class="fas fa-arrow-down"></i></button>
+                        <button onclick="closeSearch('result')" title="Close"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Data Presets ---
+        const examples = {
+            intro: {
+                data: {
+                    "title": "Product Hunt",
+                    "description": "Website to post products",
+                    "posts": [{
+                        "name": "Ethan",
+                        "makers": [{ "name": "Ethan", "username": "gliechtenstein", "headline": "I built Ethan, RubCam, TextCast, Jason" }]
+                    }, {
+                        "name": "Robin",
+                        "makers": [{ "name": "Justin", "username": "jcrandall", "headline": "co-founder, Robin" }]
+                    }]
+                },
+                template: {
+                    "result": {
+                        "head": { "title": "{{title}}", "description": "{{description}}" },
+                        "body": {
+                            "sections": {
+                                "{{#each posts}}": {
+                                    "header": { "type": "label", "text": "[App] {{name}}" },
+                                    "cards": {
+                                        "{{#each makers}}": {
+                                            "type": "vertical",
+                                            "items": [
+                                                { "type": "label", "text": "{{name}}" },
+                                                { "type": "label", "text": "by {{username}}" },
+                                                { "type": "label", "text": "{{headline}}" }
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            loops: {
+                data: { "items": ["Apple", "Banana", "Cherry", "Date"] },
+                template: {
+                    "fruit_list": {
+                        "{{#each items}}": { "id": "{{$index}}", "name": "{{this}}" }
+                    }
+                }
+            },
+            conditionals: {
+                data: { "user": { "name": "Alice", "isAdmin": true, "details": { "age": 25 } } },
+                template: {
+                    "user_profile": {
+                        "name": "{{user.name}}",
+                        "{{#if user.isAdmin}}": { "role": "Administrator", "access_level": 99 },
+                        "{{#elseif user.details.age < 18}}": { "role": "Minor", "access_level": 1 },
+                        "{{#else}}": { "role": "User", "access_level": 10 }
+                    }
+                }
+            },
+            nested: {
+                data: {
+                    "departments": [
+                        { "name": "Engineering", "employees": [{ "name": "Dave" }, { "name": "Sarah" }] },
+                        { "name": "Design", "employees": [{ "name": "Molly" }] }
+                    ]
+                },
+                template: {
+                    "organization": {
+                        "{{#each departments}}": {
+                            "dept": "{{name}}",
+                            "staff": {
+                                "{{#each employees}}": "{{name}}"
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // --- DOM Elements ---
+        const dataInput = document.getElementById('data-input');
+        const templateInput = document.getElementById('template-input');
+        const resultOutput = document.getElementById('result-output');
+        const exampleSelect = document.getElementById('example-select');
+        const saveStatus = document.getElementById('save-status');
+        const themeBtn = document.getElementById('theme-btn');
+
+        // --- Init Logic ---
+        function init() {
+            // Check for shared URL params first
+            const params = new URLSearchParams(window.location.search);
+            const shared = params.get('s');
+
+            if (shared) {
+                try {
+                    const decoded = JSON.parse(atob(shared));
+                    dataInput.value = decoded.d || '';
+                    templateInput.value = decoded.t || '';
+                    exampleSelect.value = '';
+                } catch (e) {
+                    console.error("Failed to load shared state", e);
+                    loadLocalState();
+                }
+            } else {
+                loadLocalState();
+            }
+
+            // Theme Init
+            const savedTheme = localStorage.getItem('stjs_theme');
+            if (savedTheme === 'light') {
+                document.body.classList.add('light-theme');
+                themeBtn.innerHTML = '<i class="fas fa-moon"></i>';
+            }
+
+            // Force run
+            if (dataInput.value) runTransform();
+        }
+
+        // --- State Management ---
+        function loadLocalState() {
+            const savedData = localStorage.getItem('stjs_data');
+            const savedTemplate = localStorage.getItem('stjs_template');
+
+            if (savedData && savedTemplate) {
+                dataInput.value = savedData;
+                templateInput.value = savedTemplate;
+                exampleSelect.value = '';
+            } else {
+                loadExample('intro');
+            }
+        }
+
+        function loadExample(key) {
+            const ex = examples[key];
+            if (ex) {
+                dataInput.value = JSON.stringify(ex.data, null, 2);
+                templateInput.value = JSON.stringify(ex.template, null, 2);
+                debouncedTransform();
+                saveState();
+            }
+        }
+
+        function saveState() {
+            localStorage.setItem('stjs_data', dataInput.value);
+            localStorage.setItem('stjs_template', templateInput.value);
+            showStatus('Saved');
+        }
+
+        function showStatus(msg) {
+            saveStatus.innerHTML = `<i class="fas fa-check"></i> ${msg}`;
+            saveStatus.classList.add('visible');
+            setTimeout(() => {
+                saveStatus.classList.remove('visible');
+            }, 2000);
+        }
+
+        // --- Advanced Features ---
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            const isLight = document.body.classList.contains('light-theme');
+            localStorage.setItem('stjs_theme', isLight ? 'light' : 'dark');
+            themeBtn.innerHTML = isLight ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+        }
+
+        function shareState() {
+            const state = {
+                d: dataInput.value,
+                t: templateInput.value
+            };
+            const compressed = btoa(JSON.stringify(state));
+            const url = `${window.location.origin}${window.location.pathname}?s=${compressed}`;
+
+            navigator.clipboard.writeText(url).then(() => {
+                showStatus("Link Copied!");
+            });
+        }
+
+        function toggleCollapse(paneId) {
+            const pane = document.getElementById(paneId);
+            const icon = document.getElementById(paneId + '-icon');
+            const isCollapsed = pane.classList.toggle('collapsed');
+
+            icon.className = isCollapsed ? 'fas fa-chevron-right' : 'fas fa-chevron-down';
+
+            // Adjust height styles if we were manually resizing
+            if (isCollapsed) {
+                // When collapsed, let flex logic handle it
+                pane.style.height = '';
+                // The sibling should expand
+                const siblingId = paneId === 'data-pane' ? 'template-pane' : 'data-pane';
+                document.getElementById(siblingId).style.height = '';
+                document.getElementById(siblingId).style.flex = '1';
+            } else {
+                // Restore split (approximately)
+                const container = document.getElementById('left-col');
+                const h = container.clientHeight;
+                pane.style.height = '50%';
+                const siblingId = paneId === 'data-pane' ? 'template-pane' : 'data-pane';
+                document.getElementById(siblingId).style.height = '';
+                document.getElementById(siblingId).style.flex = '1';
+            }
+        }
+
+        function handleFileUpload(input, targetId) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                document.getElementById(targetId).value = e.target.result;
+                debouncedTransform();
+                saveState();
+                input.value = ''; // Reset so we can upload same file again
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Transformation Logic ---
+        function runTransform() {
+            let data, template;
+            resultOutput.classList.remove('error-text');
+
+            try {
+                data = JSON.parse(dataInput.value);
+            } catch (e) {
+                resultOutput.textContent = "Error parsing Data JSON:\n" + e.message;
+                resultOutput.classList.add('error-text');
+                return;
+            }
+
+            try {
+                template = JSON.parse(templateInput.value);
+            } catch (e) {
+                resultOutput.textContent = "Error parsing Template JSON:\n" + e.message;
+                resultOutput.classList.add('error-text');
+                return;
+            }
+
+            try {
+                const transform = (typeof ST !== 'undefined') ? ST.transform : (typeof transform !== 'undefined' ? transform : null);
+                if (!transform) {
+                    resultOutput.textContent = "Error: ST.js library not loaded.";
+                    resultOutput.classList.add('error-text');
+                    return;
+                }
+                const result = transform(template, data);
+                resultOutput.textContent = JSON.stringify(result, null, 2);
+                saveState();
+            } catch (e) {
+                resultOutput.textContent = "Error during transformation:\n" + e.message;
+                resultOutput.classList.add('error-text');
+            }
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function (...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
+            };
+        }
+
+        const debouncedTransform = debounce(runTransform, 300);
+
+        function prettify(target) {
+            const el = target === 'data' ? dataInput : templateInput;
+            try {
+                const val = JSON.parse(el.value);
+                el.value = JSON.stringify(val, null, 2);
+                debouncedTransform();
+            } catch (e) {
+                alert("Invalid JSON, cannot format.");
+            }
+        }
+
+        function copyToClipboard(elementId) {
+            const el = document.getElementById(elementId);
+            const text = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' ? el.value : el.textContent;
+
+            navigator.clipboard.writeText(text).then(() => {
+                showStatus("Copied!");
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                showStatus("Copy Failed");
+            });
+        }
+
+        function saveTemplate() {
+            const content = templateInput.value;
+            try { JSON.parse(content); } catch (e) {
+                if (!confirm("The current template is invalid JSON. Save anyway?")) return;
+            }
+
+            let filename = prompt("Enter filename:", "template.json");
+            if (!filename) return;
+            if (!filename.toLowerCase().endsWith('.json')) filename += '.json';
+
+            const blob = new Blob([content], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // --- Event Listeners ---
+        dataInput.addEventListener('input', debouncedTransform);
+        templateInput.addEventListener('input', debouncedTransform);
+        exampleSelect.addEventListener('change', (e) => { if (e.target.value) loadExample(e.target.value); });
+
+        // --- Resizing Logic ---
+        const gutterH = document.getElementById('gutter-h');
+        const gutterV = document.getElementById('gutter-v');
+        const leftCol = document.getElementById('left-col');
+        const dataPane = document.getElementById('data-pane');
+        const container = document.getElementById('main-container');
+
+        gutterH.addEventListener('mousedown', function (e) { e.preventDefault(); setupResizer(e, 'H'); });
+        gutterV.addEventListener('mousedown', function (e) { e.preventDefault(); setupResizer(e, 'V'); });
+
+        function setupResizer(startEvent, dir) {
+            const isH = dir === 'H';
+            const gutter = isH ? gutterH : gutterV;
+            gutter.classList.add('active');
+
+            function onMouseMove(e) {
+                if (isH) {
+                    const rect = container.getBoundingClientRect();
+                    let w = e.clientX - rect.left;
+                    if (w < 150) w = 150;
+                    if (w > rect.width - 150) w = rect.width - 150;
+                    leftCol.style.width = (w / rect.width * 100) + '%';
+                } else {
+                    const rect = leftCol.getBoundingClientRect();
+                    let h = e.clientY - rect.top;
+                    if (h < 100) h = 100;
+                    if (h > rect.height - 100) h = rect.height - 100;
+                    dataPane.style.height = (h / rect.height * 100) + '%';
+                }
+            }
+
+            function onMouseUp() {
+                gutter.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        // --- Advanced Search & Select Logic ---
+        let lastActivePane = 'data';
+        let searchState = {
+            data: { matches: [], currentIndex: -1, query: '' },
+            template: { matches: [], currentIndex: -1, query: '' },
+            result: { matches: [], currentIndex: -1, query: '' }
+        };
+
+        // Track focus
+        document.getElementById('data-input').addEventListener('focus', () => lastActivePane = 'data');
+        document.getElementById('template-input').addEventListener('focus', () => lastActivePane = 'template');
+        document.getElementById('result-pane-content').addEventListener('click', () => { lastActivePane = 'result'; });
+        document.getElementById('result-pane-content').addEventListener('focus', () => { lastActivePane = 'result'; });
+
+        // Global Key Listener
+        document.addEventListener('keydown', function (e) {
+
+            // Ctrl+F or Cmd+F
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                openSearch(lastActivePane);
+            }
+
+            // Ctrl+H (Common for Replace) - Optional, but useful
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
+                if (lastActivePane !== 'result') {
+                    e.preventDefault();
+                    openSearch(lastActivePane);
+                    toggleReplace(lastActivePane, true);
+                }
+            }
+
+            // Ctrl+A
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+                if (lastActivePane === 'result') {
+                    e.preventDefault();
+                    selectAllResult();
+                }
+            }
+
+            // Escape
+            if (e.key === 'Escape') {
+                closeSearch('data');
+                closeSearch('template');
+                closeSearch('result');
+            }
+        });
+
+        function openSearch(pane) {
+            // Close others
+            ['data', 'template', 'result'].forEach(p => {
+                if (p !== pane) closeSearch(p);
+            });
+
+            const widget = document.getElementById(`search-${pane}`);
+            if (widget) {
+                widget.classList.add('visible');
+                const input = widget.querySelector('input');
+                input.focus();
+                input.select();
+
+                // Re-run search if value exists to update count
+                if (input.value) performSearch(pane);
+            }
+        }
+
+        function closeSearch(pane) {
+            const widget = document.getElementById(`search-${pane}`);
+            if (widget) widget.classList.remove('visible');
+
+            // Clear highlights
+            const state = searchState[pane];
+            state.matches = [];
+            state.currentIndex = -1;
+            renderHighlights(pane);
+
+            // Return focus
+            if (pane === 'data') dataInput.focus();
+            if (pane === 'template') templateInput.focus();
+            if (pane === 'result') document.getElementById('result-pane-content').focus();
+        }
+
+        function toggleReplace(pane, forceShow) {
+            const row = document.getElementById(`${pane}-replace-row`);
+            const icon = document.getElementById(`${pane}-replace-toggle`);
+            if (!row) return;
+
+            let isVisible = row.classList.contains('visible');
+            if (forceShow) isVisible = false; // Force toggle to show
+
+            if (isVisible) {
+                row.classList.remove('visible');
+                icon.className = 'fas fa-chevron-right';
+            } else {
+                row.classList.add('visible');
+                icon.className = 'fas fa-chevron-down';
+                // Focus replace input
+                setTimeout(() => document.getElementById(`${pane}-replace-input`).focus(), 50);
+            }
+        }
+
+        function handleSearchInput(e, pane) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    navigateMatch(pane, -1);
+                } else {
+                    navigateMatch(pane, 1);
+                }
+            }
+            if (e.key === 'ArrowDown') {
+                // If in find input, down arrow reveals replace if not open
+                const row = document.getElementById(`${pane}-replace-row`);
+                if (row && !row.classList.contains('visible')) {
+                    toggleReplace(pane);
+                }
+            }
+        }
+
+        function performSearch(pane) {
+            const widget = document.getElementById(`search-${pane}`);
+            const query = widget.querySelector('input').value;
+            const countEl = document.getElementById(`${pane}-count`);
+
+            const state = searchState[pane];
+            state.query = query;
+            state.matches = [];
+            state.currentIndex = -1;
+
+            if (!query) {
+                countEl.textContent = "No results";
+                return;
+            }
+
+            let content = "";
+            let el;
+
+            if (pane === 'data') { el = dataInput; content = el.value; }
+            else if (pane === 'template') { el = templateInput; content = el.value; }
+            else { el = document.getElementById('result-output'); content = el.textContent; }
+
+            // Find all matches (case insensitive)
+            const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            let match;
+            while ((match = regex.exec(content)) !== null) {
+                state.matches.push({ start: match.index, end: match.index + match[0].length });
+            }
+
+            if (state.matches.length > 0) {
+                state.currentIndex = 0;
+                updateCountUI(pane);
+                highlightMatch(pane);
+            } else {
+                state.currentIndex = -1;
+                countEl.textContent = "No results";
+            }
+        }
+
+        function updateCountUI(pane) {
+            const state = searchState[pane];
+            const countEl = document.getElementById(`${pane}-count`);
+            if (state.matches.length > 0) {
+                countEl.textContent = `${state.currentIndex + 1} of ${state.matches.length}`;
+            } else {
+                countEl.textContent = "No results";
+            }
+        }
+
+        function navigateMatch(pane, dir) {
+            const state = searchState[pane];
+            if (state.matches.length === 0) return;
+
+            state.currentIndex += dir;
+            // Wrap around
+            if (state.currentIndex >= state.matches.length) state.currentIndex = 0;
+            if (state.currentIndex < 0) state.currentIndex = state.matches.length - 1;
+
+            updateCountUI(pane);
+            highlightMatch(pane);
+        }
+
+        function highlightMatch(pane) {
+            const state = searchState[pane];
+            const match = state.matches[state.currentIndex];
+            if (!match) return;
+
+            if (pane === 'data' || pane === 'template') {
+                // Visual highlight only
+                renderHighlights(pane);
+
+                // Robust Scroll to view
+                // We use the backdrop's mark element to find the exact pixel offset
+                setTimeout(() => {
+                    const backdrop = document.getElementById(`${pane}-backdrop`);
+                    const mark = backdrop.querySelector('.current-match');
+                    if (mark) {
+                        const el = pane === 'data' ? dataInput : templateInput;
+                        // Center the match
+                        el.scrollTop = mark.offsetTop - (el.clientHeight / 2) + (mark.offsetHeight / 2);
+                        // Also sync backdrop scroll immediately just in case
+                        backdrop.scrollTop = el.scrollTop;
+                    }
+                }, 0);
+
+            } else {
+                // Result pane - Use innerHTML injection + native scrollIntoView
+                renderHighlights(pane);
+
+                setTimeout(() => {
+                    const container = document.getElementById('result-output');
+                    const mark = container.querySelector('.current-match');
+                    if (mark) {
+                        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 0);
+            }
+        }
+
+        function renderHighlights(pane) {
+            const state = searchState[pane];
+            let el, text, container;
+
+            if (pane === 'result') {
+                el = document.getElementById('result-output');
+                text = el.textContent || ""; // Original text is the content
+                container = el; // Target is the pre itself
+            } else {
+                el = pane === 'data' ? dataInput : templateInput;
+                text = el.value;
+                container = document.getElementById(`${pane}-backdrop`);
+            }
+
+            // If no matches, clear (restore original escaped text)
+            if (!state.matches.length) {
+                container.innerHTML = escapeHtml(text);
+                return;
+            }
+
+            // Construct highlighted HTML
+            let html = "";
+            let lastIdx = 0;
+
+            state.matches.forEach((match, i) => {
+                // Text before
+                html += escapeHtml(text.substring(lastIdx, match.start));
+
+                // Match content
+                const matchText = escapeHtml(text.substring(match.start, match.end));
+                const cls = (i === state.currentIndex) ? 'current-match' : '';
+                html += `<mark class="${cls}">${matchText}</mark>`;
+
+                lastIdx = match.end;
+            });
+
+            // Remaining text
+            html += escapeHtml(text.substring(lastIdx));
+
+            // IMPORTANT: Add a trailing space logic or <br> behavior
+            if (text.endsWith('\n')) {
+                html += '<br>&nbsp;';
+            }
+
+            container.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Sync Scrolling
+        const dataBackdrop = document.getElementById('data-backdrop');
+        const templateBackdrop = document.getElementById('template-backdrop');
+
+        dataInput.addEventListener('scroll', () => {
+            dataBackdrop.scrollTop = dataInput.scrollTop;
+            dataBackdrop.scrollLeft = dataInput.scrollLeft;
+        });
+
+        templateInput.addEventListener('scroll', () => {
+            templateBackdrop.scrollTop = templateInput.scrollTop;
+            templateBackdrop.scrollLeft = templateInput.scrollLeft;
+        });
+
+        // Clears highlights on input change (optional, or re-search?)
+        // If we want "live" highlighting while typing in textarea:
+        // We'd need to re-run performSearch(pane) blindly using last query.
+        function updateHighlightsOnEdit(pane) {
+            const state = searchState[pane];
+            if (state.query) {
+                // Optimization: Debounce this too?
+                performSearch(pane);
+            } else {
+                // Ensure backdrop content matches sync
+                const backdrop = document.getElementById(`${pane}-backdrop`);
+                const el = pane === 'data' ? dataInput : templateInput;
+                backdrop.innerHTML = escapeHtml(el.value);
+            }
+        }
+
+        // Hook into input listeners
+        dataInput.addEventListener('input', () => updateHighlightsOnEdit('data'));
+        templateInput.addEventListener('input', () => updateHighlightsOnEdit('template'));
+
+        function replaceCurrent(pane) {
+            const state = searchState[pane];
+            if (state.matches.length === 0) return;
+
+            const replaceVal = document.getElementById(`${pane}-replace-input`).value;
+            const el = pane === 'data' ? dataInput : templateInput;
+            const match = state.matches[state.currentIndex];
+
+            const currentVal = el.value;
+            const newVal = currentVal.substring(0, match.start) + replaceVal + currentVal.substring(match.end);
+
+            el.value = newVal;
+
+            // Trigger update and Re-search
+            debouncedTransform();
+            performSearch(pane);
+        }
+
+        function replaceAll(pane) {
+            const state = searchState[pane];
+            if (state.matches.length === 0) return;
+
+            const replaceVal = document.getElementById(`${pane}-replace-input`).value;
+            const el = pane === 'data' ? dataInput : templateInput;
+
+            // simple string replaceAll is risky if regex flags involved, but here we used literal string match for search
+            // But we have case-insensitive search logic. 
+            // Better to use regex matching the query with 'gi'
+
+            const regex = new RegExp(state.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            el.value = el.value.replace(regex, replaceVal);
+
+            debouncedTransform();
+            performSearch(pane);
+        }
+
+        function selectAllResult() {
+            const pre = document.getElementById('result-output');
+            const range = document.createRange();
+            range.selectNodeContents(pre);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
