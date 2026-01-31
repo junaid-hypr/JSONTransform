@@ -122,8 +122,9 @@
             /* Important for flex collapse */
             min-height: 0;
             background-color: var(--pane-bg);
-            transition: flex-grow 0.3s ease;
-            /* Smooth collapse animation */
+            transition: flex-grow 0.12s ease;
+            /* Fast collapse animation */
+            position: relative;
         }
 
         .pane.collapsed {
@@ -464,7 +465,24 @@
         .replace-row.visible {
             display: flex;
         }
+
+        /* Monaco editor containers */
+        .monaco-editor-container {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+        }
     </style>
+    <script>
+        var MONACO_VS = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs';
+        self.MonacoEnvironment = {
+            getWorkerUrl: function (workerId, label) {
+                if (label === 'json') return MONACO_VS + '/language/json/json.worker.js';
+                return MONACO_VS + '/editor/editorWorker.js';
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
     <script src="st.js"></script>
 </head>
 
@@ -512,10 +530,7 @@
                     </div>
                 </div>
                 <div class="pane-content" id="data-pane-content" tabindex="-1">
-                    <div class="input-wrapper">
-                        <div class="backdrop" id="data-backdrop"></div>
-                        <textarea id="data-input" spellcheck="false" placeholder="Enter JSON data here..."></textarea>
-                    </div>
+                    <div id="data-editor-container" class="monaco-editor-container"></div>
                     <!-- Search Widget: Data -->
                     <div class="search-widget" id="search-data">
                         <div class="search-row">
@@ -565,11 +580,7 @@
                     </div>
                 </div>
                 <div class="pane-content" id="template-pane-content" tabindex="-1">
-                    <div class="input-wrapper">
-                        <div class="backdrop" id="template-backdrop"></div>
-                        <textarea id="template-input" spellcheck="false"
-                            placeholder="Enter ST.js template here..."></textarea>
-                    </div>
+                    <div id="template-editor-container" class="monaco-editor-container"></div>
                     <!-- Search Widget: Template -->
                     <div class="search-widget" id="search-template">
                         <div class="search-row">
@@ -612,7 +623,7 @@
                 </div>
             </div>
             <div class="pane-content" id="result-pane-content" tabindex="-1">
-                <pre id="result-output"></pre>
+                <div id="result-editor-container" class="monaco-editor-container"></div>
                 <!-- Search Widget: Result (No Replace) -->
                 <div class="search-widget" id="search-result">
                     <div class="search-row">
@@ -632,8 +643,59 @@
     </div>
 
     <script>
-        // --- Data Presets ---
-        const examples = {
+        require.config({ paths: { vs: MONACO_VS } });
+        require(['vs/editor/editor.main'], function () {
+            // --- Monaco editors with JSON folding (VS Code-style dropdown collapsible) ---
+            var monacoOpts = {
+                language: 'json',
+                automaticLayout: true,
+                lineNumbers: 'on',
+                folding: true,
+                showFoldingControls: 'always',
+                foldingStrategy: 'auto',
+                unfoldOnClickAfterEndOfLine: true,
+                fontSize: 14,
+                fontFamily: "'Consolas', 'Courier New', monospace",
+                lineHeight: 22,
+                padding: { top: 10 },
+                scrollBeyondLastLine: false,
+                minimap: { enabled: false },
+                renderLineHighlight: 'none'
+            };
+            var dataEditor = monaco.editor.create(document.getElementById('data-editor-container'), Object.assign({ value: '' }, monacoOpts));
+            var templateEditor = monaco.editor.create(document.getElementById('template-editor-container'), Object.assign({ value: '' }, monacoOpts));
+            var resultEditor = monaco.editor.create(document.getElementById('result-editor-container'), Object.assign({ value: '', readOnly: true }, monacoOpts));
+
+            function getDataValue() { return dataEditor.getModel().getValue(); }
+            function setDataValue(v) { dataEditor.getModel().setValue(v || ''); }
+            function getTemplateValue() { return templateEditor.getModel().getValue(); }
+            function setTemplateValue(v) { templateEditor.getModel().setValue(v || ''); }
+            function getResultValue() { return resultEditor.getModel().getValue(); }
+            function setResultValue(v) { resultEditor.getModel().setValue(v || ''); }
+            var resultOutput = document.getElementById('result-editor-container');
+
+            // Theme for Monaco
+            function applyMonacoTheme() {
+                var isLight = document.body.classList.contains('light-theme');
+                monaco.editor.setTheme(isLight ? 'vs' : 'vs-dark');
+            }
+            applyMonacoTheme();
+
+            // Resize editors when pane resizes
+            [dataEditor, templateEditor, resultEditor].forEach(function (ed) {
+                var el = ed.getContainerDomNode().parentElement;
+                if (typeof ResizeObserver !== 'undefined') {
+                    new ResizeObserver(function () { ed.layout(); }).observe(el);
+                }
+            });
+            window.addEventListener('resize', function () {
+                dataEditor.layout();
+                templateEditor.layout();
+                resultEditor.layout();
+            });
+
+            // --- Data Presets ---
+            const examples = {
             intro: {
                 data: {
                     "title": "Product Hunt",
@@ -709,9 +771,6 @@
         };
 
         // --- DOM Elements ---
-        const dataInput = document.getElementById('data-input');
-        const templateInput = document.getElementById('template-input');
-        const resultOutput = document.getElementById('result-output');
         const exampleSelect = document.getElementById('example-select');
         const saveStatus = document.getElementById('save-status');
         const themeBtn = document.getElementById('theme-btn');
@@ -725,8 +784,8 @@
             if (shared) {
                 try {
                     const decoded = JSON.parse(atob(shared));
-                    dataInput.value = decoded.d || '';
-                    templateInput.value = decoded.t || '';
+                    setDataValue(decoded.d || '');
+                    setTemplateValue(decoded.t || '');
                     exampleSelect.value = '';
                 } catch (e) {
                     console.error("Failed to load shared state", e);
@@ -744,7 +803,7 @@
             }
 
             // Force run
-            if (dataInput.value) runTransform();
+            if (getDataValue()) runTransform();
         }
 
         // --- State Management ---
@@ -753,8 +812,8 @@
             const savedTemplate = localStorage.getItem('stjs_template');
 
             if (savedData && savedTemplate) {
-                dataInput.value = savedData;
-                templateInput.value = savedTemplate;
+                setDataValue(savedData);
+                setTemplateValue(savedTemplate);
                 exampleSelect.value = '';
             } else {
                 loadExample('intro');
@@ -764,16 +823,16 @@
         function loadExample(key) {
             const ex = examples[key];
             if (ex) {
-                dataInput.value = JSON.stringify(ex.data, null, 2);
-                templateInput.value = JSON.stringify(ex.template, null, 2);
+                setDataValue(JSON.stringify(ex.data, null, 2));
+                setTemplateValue(JSON.stringify(ex.template, null, 2));
                 debouncedTransform();
                 saveState();
             }
         }
 
         function saveState() {
-            localStorage.setItem('stjs_data', dataInput.value);
-            localStorage.setItem('stjs_template', templateInput.value);
+            localStorage.setItem('stjs_data', getDataValue());
+            localStorage.setItem('stjs_template', getTemplateValue());
             showStatus('Saved');
         }
 
@@ -792,12 +851,13 @@
             const isLight = document.body.classList.contains('light-theme');
             localStorage.setItem('stjs_theme', isLight ? 'light' : 'dark');
             themeBtn.innerHTML = isLight ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+            if (typeof applyMonacoTheme === 'function') applyMonacoTheme();
         }
 
         function shareState() {
             const state = {
-                d: dataInput.value,
-                t: templateInput.value
+                d: getDataValue(),
+                t: getTemplateValue()
             };
             const compressed = btoa(JSON.stringify(state));
             const url = `${window.location.origin}${window.location.pathname}?s=${compressed}`;
@@ -810,28 +870,30 @@
         function toggleCollapse(paneId) {
             const pane = document.getElementById(paneId);
             const icon = document.getElementById(paneId + '-icon');
+            if (!pane || !icon) return;
             const isCollapsed = pane.classList.toggle('collapsed');
 
+            // Toolbar chevron: down when expanded, right when collapsed
             icon.className = isCollapsed ? 'fas fa-chevron-right' : 'fas fa-chevron-down';
 
-            // Adjust height styles if we were manually resizing
-            if (isCollapsed) {
-                // When collapsed, let flex logic handle it
-                pane.style.height = '';
-                // The sibling should expand
-                const siblingId = paneId === 'data-pane' ? 'template-pane' : 'data-pane';
-                document.getElementById(siblingId).style.height = '';
-                document.getElementById(siblingId).style.flex = '1';
-            } else {
-                // Restore split (approximately)
-                const container = document.getElementById('left-col');
-                const h = container.clientHeight;
-                pane.style.height = '50%';
-                const siblingId = paneId === 'data-pane' ? 'template-pane' : 'data-pane';
-                document.getElementById(siblingId).style.height = '';
-                document.getElementById(siblingId).style.flex = '1';
+            // Height/width logic only for left-column panes (data, template)
+            if (paneId === 'data-pane' || paneId === 'template-pane') {
+                if (isCollapsed) {
+                    pane.style.height = '';
+                    const siblingId = paneId === 'data-pane' ? 'template-pane' : 'data-pane';
+                    document.getElementById(siblingId).style.height = '';
+                    document.getElementById(siblingId).style.flex = '1';
+                } else {
+                    const container = document.getElementById('left-col');
+                    const h = container.clientHeight;
+                    pane.style.height = '50%';
+                    const siblingId = paneId === 'data-pane' ? 'template-pane' : 'data-pane';
+                    document.getElementById(siblingId).style.height = '';
+                    document.getElementById(siblingId).style.flex = '1';
+                }
             }
         }
+        window.toggleCollapse = toggleCollapse;
 
         function handleFileUpload(input, targetId) {
             const file = input.files[0];
@@ -839,7 +901,8 @@
 
             const reader = new FileReader();
             reader.onload = function (e) {
-                document.getElementById(targetId).value = e.target.result;
+                if (targetId === 'data-input') setDataValue(e.target.result);
+                else if (targetId === 'template-input') setTemplateValue(e.target.result);
                 debouncedTransform();
                 saveState();
                 input.value = ''; // Reset so we can upload same file again
@@ -853,17 +916,17 @@
             resultOutput.classList.remove('error-text');
 
             try {
-                data = JSON.parse(dataInput.value);
+                data = JSON.parse(getDataValue());
             } catch (e) {
-                resultOutput.textContent = "Error parsing Data JSON:\n" + e.message;
+                setResultValue("Error parsing Data JSON:\n" + e.message);
                 resultOutput.classList.add('error-text');
                 return;
             }
 
             try {
-                template = JSON.parse(templateInput.value);
+                template = JSON.parse(getTemplateValue());
             } catch (e) {
-                resultOutput.textContent = "Error parsing Template JSON:\n" + e.message;
+                setResultValue("Error parsing Template JSON:\n" + e.message);
                 resultOutput.classList.add('error-text');
                 return;
             }
@@ -871,15 +934,16 @@
             try {
                 const transform = (typeof ST !== 'undefined') ? ST.transform : (typeof transform !== 'undefined' ? transform : null);
                 if (!transform) {
-                    resultOutput.textContent = "Error: ST.js library not loaded.";
+                    setResultValue("Error: ST.js library not loaded.");
                     resultOutput.classList.add('error-text');
                     return;
                 }
                 const result = transform(template, data);
-                resultOutput.textContent = JSON.stringify(result, null, 2);
+                setResultValue(JSON.stringify(result, null, 2));
+                resultOutput.classList.remove('error-text');
                 saveState();
             } catch (e) {
-                resultOutput.textContent = "Error during transformation:\n" + e.message;
+                setResultValue("Error during transformation:\n" + e.message);
                 resultOutput.classList.add('error-text');
             }
         }
@@ -896,10 +960,11 @@
         const debouncedTransform = debounce(runTransform, 300);
 
         function prettify(target) {
-            const el = target === 'data' ? dataInput : templateInput;
+            const getVal = target === 'data' ? getDataValue : getTemplateValue;
+            const setVal = target === 'data' ? setDataValue : setTemplateValue;
             try {
-                const val = JSON.parse(el.value);
-                el.value = JSON.stringify(val, null, 2);
+                const val = JSON.parse(getVal());
+                setVal(JSON.stringify(val, null, 2));
                 debouncedTransform();
             } catch (e) {
                 alert("Invalid JSON, cannot format.");
@@ -907,9 +972,10 @@
         }
 
         function copyToClipboard(elementId) {
-            const el = document.getElementById(elementId);
-            const text = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' ? el.value : el.textContent;
-
+            let text = '';
+            if (elementId === 'data-input') text = getDataValue();
+            else if (elementId === 'template-input') text = getTemplateValue();
+            else if (elementId === 'result-output') text = getResultValue();
             navigator.clipboard.writeText(text).then(() => {
                 showStatus("Copied!");
             }).catch(err => {
@@ -919,7 +985,7 @@
         }
 
         function saveTemplate() {
-            const content = templateInput.value;
+            const content = getTemplateValue();
             try { JSON.parse(content); } catch (e) {
                 if (!confirm("The current template is invalid JSON. Save anyway?")) return;
             }
@@ -940,8 +1006,8 @@
         }
 
         // --- Event Listeners ---
-        dataInput.addEventListener('input', debouncedTransform);
-        templateInput.addEventListener('input', debouncedTransform);
+        dataEditor.getModel().onDidChangeContent(debouncedTransform);
+        templateEditor.getModel().onDidChangeContent(debouncedTransform);
         exampleSelect.addEventListener('change', (e) => { if (e.target.value) loadExample(e.target.value); });
 
         // --- Resizing Logic ---
@@ -994,8 +1060,8 @@
         };
 
         // Track focus
-        document.getElementById('data-input').addEventListener('focus', () => lastActivePane = 'data');
-        document.getElementById('template-input').addEventListener('focus', () => lastActivePane = 'template');
+        dataEditor.onDidFocusEditorText(() => { lastActivePane = 'data'; });
+        templateEditor.onDidFocusEditorText(() => { lastActivePane = 'template'; });
         document.getElementById('result-pane-content').addEventListener('click', () => { lastActivePane = 'result'; });
         document.getElementById('result-pane-content').addEventListener('focus', () => { lastActivePane = 'result'; });
 
@@ -1062,8 +1128,8 @@
             renderHighlights(pane);
 
             // Return focus
-            if (pane === 'data') dataInput.focus();
-            if (pane === 'template') templateInput.focus();
+            if (pane === 'data') dataEditor.focus();
+            if (pane === 'template') templateEditor.focus();
             if (pane === 'result') document.getElementById('result-pane-content').focus();
         }
 
@@ -1120,11 +1186,9 @@
             }
 
             let content = "";
-            let el;
-
-            if (pane === 'data') { el = dataInput; content = el.value; }
-            else if (pane === 'template') { el = templateInput; content = el.value; }
-            else { el = document.getElementById('result-output'); content = el.textContent; }
+            if (pane === 'data') content = getDataValue();
+            else if (pane === 'template') content = getTemplateValue();
+            else content = getResultValue();
 
             // Find all matches (case insensitive)
             const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
@@ -1170,84 +1234,16 @@
             const state = searchState[pane];
             const match = state.matches[state.currentIndex];
             if (!match) return;
-
-            if (pane === 'data' || pane === 'template') {
-                // Visual highlight only
-                renderHighlights(pane);
-
-                // Robust Scroll to view
-                // We use the backdrop's mark element to find the exact pixel offset
-                setTimeout(() => {
-                    const backdrop = document.getElementById(`${pane}-backdrop`);
-                    const mark = backdrop.querySelector('.current-match');
-                    if (mark) {
-                        const el = pane === 'data' ? dataInput : templateInput;
-                        // Center the match
-                        el.scrollTop = mark.offsetTop - (el.clientHeight / 2) + (mark.offsetHeight / 2);
-                        // Also sync backdrop scroll immediately just in case
-                        backdrop.scrollTop = el.scrollTop;
-                    }
-                }, 0);
-
-            } else {
-                // Result pane - Use innerHTML injection + native scrollIntoView
-                renderHighlights(pane);
-
-                setTimeout(() => {
-                    const container = document.getElementById('result-output');
-                    const mark = container.querySelector('.current-match');
-                    if (mark) {
-                        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                }, 0);
-            }
+            var ed = pane === 'data' ? dataEditor : pane === 'template' ? templateEditor : resultEditor;
+            var model = ed.getModel();
+            var pos = model.getPositionAt(match.start);
+            var endPos = model.getPositionAt(match.end);
+            ed.setSelection(new monaco.Range(pos.lineNumber, pos.column, endPos.lineNumber, endPos.column));
+            ed.revealLineInCenter(pos.lineNumber);
         }
 
         function renderHighlights(pane) {
-            const state = searchState[pane];
-            let el, text, container;
-
-            if (pane === 'result') {
-                el = document.getElementById('result-output');
-                text = el.textContent || ""; // Original text is the content
-                container = el; // Target is the pre itself
-            } else {
-                el = pane === 'data' ? dataInput : templateInput;
-                text = el.value;
-                container = document.getElementById(`${pane}-backdrop`);
-            }
-
-            // If no matches, clear (restore original escaped text)
-            if (!state.matches.length) {
-                container.innerHTML = escapeHtml(text);
-                return;
-            }
-
-            // Construct highlighted HTML
-            let html = "";
-            let lastIdx = 0;
-
-            state.matches.forEach((match, i) => {
-                // Text before
-                html += escapeHtml(text.substring(lastIdx, match.start));
-
-                // Match content
-                const matchText = escapeHtml(text.substring(match.start, match.end));
-                const cls = (i === state.currentIndex) ? 'current-match' : '';
-                html += `<mark class="${cls}">${matchText}</mark>`;
-
-                lastIdx = match.end;
-            });
-
-            // Remaining text
-            html += escapeHtml(text.substring(lastIdx));
-
-            // IMPORTANT: Add a trailing space logic or <br> behavior
-            if (text.endsWith('\n')) {
-                html += '<br>&nbsp;';
-            }
-
-            container.innerHTML = html;
+            // Monaco: highlight is done via selection in highlightMatch; no backdrop
         }
 
         function escapeHtml(text) {
@@ -1259,54 +1255,17 @@
                 .replace(/'/g, "&#039;");
         }
 
-        // Sync Scrolling
-        const dataBackdrop = document.getElementById('data-backdrop');
-        const templateBackdrop = document.getElementById('template-backdrop');
-
-        dataInput.addEventListener('scroll', () => {
-            dataBackdrop.scrollTop = dataInput.scrollTop;
-            dataBackdrop.scrollLeft = dataInput.scrollLeft;
-        });
-
-        templateInput.addEventListener('scroll', () => {
-            templateBackdrop.scrollTop = templateInput.scrollTop;
-            templateBackdrop.scrollLeft = templateInput.scrollLeft;
-        });
-
-        // Clears highlights on input change (optional, or re-search?)
-        // If we want "live" highlighting while typing in textarea:
-        // We'd need to re-run performSearch(pane) blindly using last query.
-        function updateHighlightsOnEdit(pane) {
-            const state = searchState[pane];
-            if (state.query) {
-                // Optimization: Debounce this too?
-                performSearch(pane);
-            } else {
-                // Ensure backdrop content matches sync
-                const backdrop = document.getElementById(`${pane}-backdrop`);
-                const el = pane === 'data' ? dataInput : templateInput;
-                backdrop.innerHTML = escapeHtml(el.value);
-            }
-        }
-
-        // Hook into input listeners
-        dataInput.addEventListener('input', () => updateHighlightsOnEdit('data'));
-        templateInput.addEventListener('input', () => updateHighlightsOnEdit('template'));
-
         function replaceCurrent(pane) {
             const state = searchState[pane];
             if (state.matches.length === 0) return;
 
             const replaceVal = document.getElementById(`${pane}-replace-input`).value;
-            const el = pane === 'data' ? dataInput : templateInput;
+            const getVal = pane === 'data' ? getDataValue : getTemplateValue;
+            const setVal = pane === 'data' ? setDataValue : setTemplateValue;
             const match = state.matches[state.currentIndex];
-
-            const currentVal = el.value;
+            const currentVal = getVal();
             const newVal = currentVal.substring(0, match.start) + replaceVal + currentVal.substring(match.end);
-
-            el.value = newVal;
-
-            // Trigger update and Re-search
+            setVal(newVal);
             debouncedTransform();
             performSearch(pane);
         }
@@ -1316,29 +1275,23 @@
             if (state.matches.length === 0) return;
 
             const replaceVal = document.getElementById(`${pane}-replace-input`).value;
-            const el = pane === 'data' ? dataInput : templateInput;
-
-            // simple string replaceAll is risky if regex flags involved, but here we used literal string match for search
-            // But we have case-insensitive search logic. 
-            // Better to use regex matching the query with 'gi'
-
+            const getVal = pane === 'data' ? getDataValue : getTemplateValue;
+            const setVal = pane === 'data' ? setDataValue : setTemplateValue;
             const regex = new RegExp(state.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-            el.value = el.value.replace(regex, replaceVal);
-
+            setVal(getVal().replace(regex, replaceVal));
             debouncedTransform();
             performSearch(pane);
         }
 
         function selectAllResult() {
-            const pre = document.getElementById('result-output');
-            const range = document.createRange();
-            range.selectNodeContents(pre);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
+            var model = resultEditor.getModel();
+            var lastLine = model.getLineCount();
+            var lastCol = model.getLineMaxColumn(lastLine);
+            resultEditor.setSelection(new monaco.Range(1, 1, lastLine, lastCol));
         }
 
         init();
+        }); // end require(['vs/editor/editor.main']
     </script>
 </body>
 
