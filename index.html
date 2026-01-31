@@ -122,8 +122,8 @@
             /* Important for flex collapse */
             min-height: 0;
             background-color: var(--pane-bg);
-            transition: flex-grow 0.3s ease;
-            /* Smooth collapse animation */
+            transition: flex-grow 0.12s ease;
+            /* Fast collapse animation */
             position: relative;
         }
 
@@ -134,37 +134,10 @@
             overflow: hidden;
         }
 
-        /* Left-boundary collapsible arrow (default on every pane) */
-        .pane-collapse-handle {
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 20px;
-            min-width: 20px;
-            z-index: 5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: var(--border-color);
-            cursor: pointer;
-            border-right: 1px solid var(--border-color);
-            transition: background-color 0.2s;
-        }
-
-        .pane-collapse-handle:hover {
-            background-color: var(--gutter-hover);
-        }
-
-        .pane-collapse-handle i {
-            color: var(--text-color);
-            font-size: 0.75rem;
-        }
-
         /* Pane Toolbar */
         .pane-toolbar {
             background-color: var(--toolbar-bg);
-            padding: 0 10px 0 28px;
+            padding: 0 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -209,8 +182,6 @@
             flex: 1;
             position: relative;
             overflow: hidden;
-            padding-left: 20px;
-            box-sizing: border-box;
         }
 
         textarea,
@@ -543,11 +514,10 @@
 
             <!-- Data Pane -->
             <div id="data-pane" class="pane">
-                <div class="pane-collapse-handle" onclick="toggleCollapse('data-pane')" title="Collapse/Expand pane">
-                    <i class="fas fa-chevron-left" id="data-pane-icon"></i>
-                </div>
                 <div class="pane-toolbar">
-                    <span class="pane-title" onclick="toggleCollapse('data-pane')">Data (JSON)</span>
+                    <span class="pane-title" onclick="toggleCollapse('data-pane')">
+                        <i class="fas fa-chevron-down" id="data-pane-icon"></i> Data (JSON)
+                    </span>
                     <div class="pane-actions">
                         <input type="file" id="data-upload" class="hidden-file-input" accept=".json"
                             onchange="handleFileUpload(this, 'data-input')">
@@ -592,11 +562,10 @@
 
             <!-- Template Pane -->
             <div id="template-pane" class="pane">
-                <div class="pane-collapse-handle" onclick="toggleCollapse('template-pane')" title="Collapse/Expand pane">
-                    <i class="fas fa-chevron-left" id="template-pane-icon"></i>
-                </div>
                 <div class="pane-toolbar">
-                    <span class="pane-title" onclick="toggleCollapse('template-pane')">Template (JSON)</span>
+                    <span class="pane-title" onclick="toggleCollapse('template-pane')">
+                        <i class="fas fa-chevron-down" id="template-pane-icon"></i> Template (JSON)
+                    </span>
                     <div class="pane-actions">
                         <input type="file" id="template-upload" class="hidden-file-input" accept=".json"
                             onchange="handleFileUpload(this, 'template-input')">
@@ -646,11 +615,8 @@
 
         <!-- Right Column: Result -->
         <div id="right-col" class="pane">
-            <div class="pane-collapse-handle" onclick="toggleCollapse('right-col')" title="Collapse/Expand pane">
-                <i class="fas fa-chevron-left" id="right-col-icon"></i>
-            </div>
             <div class="pane-toolbar">
-                <span class="pane-title" onclick="toggleCollapse('right-col')">Result</span>
+                <span class="pane-title">Result</span>
                 <div class="pane-actions">
                     <button onclick="copyToClipboard('result-output')" title="Copy content"><i class="fas fa-copy"></i>
                         Copy</button>
@@ -907,8 +873,8 @@
             if (!pane || !icon) return;
             const isCollapsed = pane.classList.toggle('collapsed');
 
-            // Left-boundary arrow: chevron-left when expanded, chevron-right when collapsed
-            icon.className = isCollapsed ? 'fas fa-chevron-right' : 'fas fa-chevron-left';
+            // Toolbar chevron: down when expanded, right when collapsed
+            icon.className = isCollapsed ? 'fas fa-chevron-right' : 'fas fa-chevron-down';
 
             // Height/width logic only for left-column panes (data, template)
             if (paneId === 'data-pane' || paneId === 'template-pane') {
@@ -927,6 +893,7 @@
                 }
             }
         }
+        window.toggleCollapse = toggleCollapse;
 
         function handleFileUpload(input, targetId) {
             const file = input.files[0];
