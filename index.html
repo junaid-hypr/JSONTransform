@@ -789,10 +789,10 @@
                     exampleSelect.value = '';
                 } catch (e) {
                     console.error("Failed to load shared state", e);
-                    loadLocalState();
+                    loadExample('intro');
                 }
             } else {
-                loadLocalState();
+                loadExample('intro');
             }
 
             // Theme Init
@@ -806,34 +806,13 @@
             if (getDataValue()) runTransform();
         }
 
-        // --- State Management ---
-        function loadLocalState() {
-            const savedData = localStorage.getItem('stjs_data');
-            const savedTemplate = localStorage.getItem('stjs_template');
-
-            if (savedData && savedTemplate) {
-                setDataValue(savedData);
-                setTemplateValue(savedTemplate);
-                exampleSelect.value = '';
-            } else {
-                loadExample('intro');
-            }
-        }
-
         function loadExample(key) {
             const ex = examples[key];
             if (ex) {
                 setDataValue(JSON.stringify(ex.data, null, 2));
                 setTemplateValue(JSON.stringify(ex.template, null, 2));
                 debouncedTransform();
-                saveState();
             }
-        }
-
-        function saveState() {
-            localStorage.setItem('stjs_data', getDataValue());
-            localStorage.setItem('stjs_template', getTemplateValue());
-            showStatus('Saved');
         }
 
         function showStatus(msg) {
@@ -904,11 +883,11 @@
                 if (targetId === 'data-input') setDataValue(e.target.result);
                 else if (targetId === 'template-input') setTemplateValue(e.target.result);
                 debouncedTransform();
-                saveState();
                 input.value = ''; // Reset so we can upload same file again
             };
             reader.readAsText(file);
         }
+        window.handleFileUpload = handleFileUpload;
 
         // --- Transformation Logic ---
         function runTransform() {
@@ -941,7 +920,6 @@
                 const result = transform(template, data);
                 setResultValue(JSON.stringify(result, null, 2));
                 resultOutput.classList.remove('error-text');
-                saveState();
             } catch (e) {
                 setResultValue("Error during transformation:\n" + e.message);
                 resultOutput.classList.add('error-text');
@@ -970,6 +948,7 @@
                 alert("Invalid JSON, cannot format.");
             }
         }
+        window.prettify = prettify;
 
         function copyToClipboard(elementId) {
             let text = '';
@@ -983,6 +962,7 @@
                 showStatus("Copy Failed");
             });
         }
+        window.copyToClipboard = copyToClipboard;
 
         function saveTemplate() {
             const content = getTemplateValue();
@@ -1004,6 +984,7 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
+        window.saveTemplate = saveTemplate;
 
         // --- Event Listeners ---
         dataEditor.getModel().onDidChangeContent(debouncedTransform);
